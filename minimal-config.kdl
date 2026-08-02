@@ -1,0 +1,27 @@
+input {
+    mod-key "Alt"
+    mod-key-nested "Alt"
+    trackpoint {
+        scroll-factor 0.5
+    }
+}
+
+binds {
+    Mod+O { toggle-overview; }
+    Mod+N { spawn "ghostty"; }
+    Mod+H { focus-column-left; }
+    Mod+L { focus-column-right; }
+    Mod+Shift+H { move-column-left; }
+    Mod+Shift+L { move-column-right; }
+    Mod+Q { close-window; }
+    Mod+Shift+Q { quit; }
+}
+
+layout {
+    default-column-width { proportion 0.5; }
+    gaps 8
+}
+
+output "eDP-1" {
+    scale 1
+}
