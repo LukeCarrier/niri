@@ -238,6 +238,12 @@ pub struct FocusRing {
     pub active_gradient: Option<Gradient>,
     pub inactive_gradient: Option<Gradient>,
     pub urgent_gradient: Option<Gradient>,
+    /// Rotation speed of the gradient angle while the ring shows active colors, in degrees per
+    /// second. Zero (the default) disables the rotation.
+    pub gradient_spin_speed: f64,
+    /// Draw the focus ring behind window content while it morphs between windows; by default it
+    /// travels over window content. Only relevant while the morph animation is enabled.
+    pub morph_behind_windows: bool,
 }
 
 impl Default for FocusRing {
@@ -251,6 +257,8 @@ impl Default for FocusRing {
             active_gradient: None,
             inactive_gradient: None,
             urgent_gradient: None,
+            gradient_spin_speed: 0.,
+            morph_behind_windows: false,
         }
     }
 }
@@ -265,6 +273,11 @@ pub struct Border {
     pub active_gradient: Option<Gradient>,
     pub inactive_gradient: Option<Gradient>,
     pub urgent_gradient: Option<Gradient>,
+    /// Rotation speed of the gradient angle while the border shows active colors, in degrees per
+    /// second. Zero (the default) disables the rotation.
+    pub gradient_spin_speed: f64,
+    /// Unused for borders; kept so that `FocusRing` <-> `Border` conversions are lossless.
+    pub morph_behind_windows: bool,
 }
 
 impl Default for Border {
@@ -278,6 +291,8 @@ impl Default for Border {
             active_gradient: None,
             inactive_gradient: None,
             urgent_gradient: None,
+            gradient_spin_speed: 0.,
+            morph_behind_windows: false,
         }
     }
 }
@@ -293,6 +308,8 @@ impl From<Border> for FocusRing {
             active_gradient: value.active_gradient,
             inactive_gradient: value.inactive_gradient,
             urgent_gradient: value.urgent_gradient,
+            gradient_spin_speed: value.gradient_spin_speed,
+            morph_behind_windows: value.morph_behind_windows,
         }
     }
 }
@@ -308,6 +325,8 @@ impl From<FocusRing> for Border {
             active_gradient: value.active_gradient,
             inactive_gradient: value.inactive_gradient,
             urgent_gradient: value.urgent_gradient,
+            gradient_spin_speed: value.gradient_spin_speed,
+            morph_behind_windows: value.morph_behind_windows,
         }
     }
 }
@@ -327,6 +346,11 @@ impl MergeWith<BorderRule> for Border {
             (inactive_color, inactive_gradient),
             (urgent_color, urgent_gradient),
         );
+
+        if let Some(speed) = part.gradient_spin_speed {
+            self.gradient_spin_speed = speed.0;
+        }
+        self.morph_behind_windows |= part.morph_behind_windows;
     }
 }
 
@@ -642,6 +666,10 @@ pub struct BorderRule {
     pub inactive_gradient: Option<Gradient>,
     #[knuffel(child)]
     pub urgent_gradient: Option<Gradient>,
+    #[knuffel(child, unwrap(argument))]
+    pub gradient_spin_speed: Option<FloatOrInt<0, 3600>>,
+    #[knuffel(child)]
+    pub morph_behind_windows: bool,
 }
 
 #[derive(knuffel::Decode, Debug, Default, Clone, Copy, PartialEq)]
