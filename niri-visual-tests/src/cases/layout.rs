@@ -66,6 +66,8 @@ impl Layout {
                     active_gradient: None,
                     inactive_gradient: None,
                     urgent_gradient: None,
+                    gradient_spin_speed: 0.,
+                    morph_behind_windows: false,
                 },
                 ..Default::default()
             },

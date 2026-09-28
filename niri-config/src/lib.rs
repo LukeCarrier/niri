@@ -788,11 +788,14 @@ mod tests {
                     active-color 0 100 200 255
                     inactive-color 255 200 100 0
                     active-gradient from="rgba(10, 20, 30, 1.0)" to="#0080ffff" relative-to="workspace-view"
+                    gradient-spin-speed 90
+                    morph-behind-windows
                 }
 
                 border {
                     width 3
                     inactive-color "rgba(255, 200, 100, 0.0)"
+                    gradient-spin-speed 45
                 }
 
                 shadow {
@@ -880,6 +883,20 @@ mod tests {
 
                 recent-windows-close {
                     off
+                }
+
+                focus-ring-fade {
+                    duration-ms 500
+                    curve "ease-out-cubic"
+                }
+
+                border-fade {
+                    duration-ms 400
+                }
+
+                focus-ring-morph {
+                    duration-ms 250
+                    curve "ease-out-expo"
                 }
             }
 
@@ -1350,6 +1367,8 @@ mod tests {
                     ),
                     inactive_gradient: None,
                     urgent_gradient: None,
+                    gradient_spin_speed: 90.0,
+                    morph_behind_windows: true,
                 },
                 border: Border {
                     off: false,
@@ -1375,6 +1394,8 @@ mod tests {
                     active_gradient: None,
                     inactive_gradient: None,
                     urgent_gradient: None,
+                    gradient_spin_speed: 45.0,
+                    morph_behind_windows: false,
                 },
                 shadow: Shadow {
                     on: false,
@@ -1671,6 +1692,39 @@ mod tests {
                         ),
                     },
                 ),
+                focus_ring_fade: FocusRingFadeAnim(
+                    Animation {
+                        off: false,
+                        kind: Easing(
+                            EasingParams {
+                                duration_ms: 500,
+                                curve: EaseOutCubic,
+                            },
+                        ),
+                    },
+                ),
+                border_fade: BorderFadeAnim(
+                    Animation {
+                        off: false,
+                        kind: Easing(
+                            EasingParams {
+                                duration_ms: 400,
+                                curve: EaseOutCubic,
+                            },
+                        ),
+                    },
+                ),
+                focus_ring_morph: FocusRingMorphAnim(
+                    Animation {
+                        off: false,
+                        kind: Easing(
+                            EasingParams {
+                                duration_ms: 250,
+                                curve: EaseOutExpo,
+                            },
+                        ),
+                    },
+                ),
             },
             blur: Blur {
                 off: false,
@@ -1847,6 +1901,8 @@ mod tests {
                         active_gradient: None,
                         inactive_gradient: None,
                         urgent_gradient: None,
+                        gradient_spin_speed: None,
+                        morph_behind_windows: false,
                     },
                     border: BorderRule {
                         off: false,
@@ -1862,6 +1918,8 @@ mod tests {
                         active_gradient: None,
                         inactive_gradient: None,
                         urgent_gradient: None,
+                        gradient_spin_speed: None,
+                        morph_behind_windows: false,
                     },
                     shadow: ShadowRule {
                         off: false,

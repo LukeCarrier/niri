@@ -23,6 +23,8 @@ impl InsertHintElement {
                 active_gradient: config.gradient,
                 inactive_gradient: config.gradient,
                 urgent_gradient: config.gradient,
+                gradient_spin_speed: 0.,
+                morph_behind_windows: false,
             }),
         }
     }
@@ -37,6 +39,8 @@ impl InsertHintElement {
             active_gradient: config.gradient,
             inactive_gradient: config.gradient,
             urgent_gradient: config.gradient,
+            gradient_spin_speed: 0.,
+            morph_behind_windows: false,
         });
     }
 
