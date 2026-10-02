@@ -1,5 +1,6 @@
 use core::f64;
 use std::rc::Rc;
+use std::time::Duration;
 
 use niri_config::utils::MergeWith as _;
 use niri_config::{Color, CornerRadius, GradientInterpolation};
@@ -114,6 +115,12 @@ pub struct Tile<W: LayoutElement> {
     /// The appearance (alpha) animation of the focus ring when it gains or loses ownership.
     ring_alpha_anim: Option<Animation>,
 
+    /// Gradient rotation state of the border.
+    border_spin: GradientSpin,
+
+    /// Gradient rotation state of the focus ring.
+    ring_spin: GradientSpin,
+
     /// Offset during the initial interactive move rubberband.
     pub(super) interactive_move_offset: Point<f64, Logical>,
 
@@ -196,6 +203,47 @@ pub(super) struct AlphaAnimation {
     offscreen: OffscreenBuffer,
 }
 
+/// A tile is considered stale if it hasn't been rendered recently. This bounds how long a
+/// gradient spin on a hidden tile can keep the redraw loop going after the tile disappears.
+const SPIN_STALE: Duration = Duration::from_millis(250);
+
+/// Accumulated gradient rotation driven by `gradient-spin-speed`.
+#[derive(Debug, Default, Clone, Copy)]
+pub(super) struct GradientSpin {
+    /// Accumulated rotation in radians.
+    offset: f64,
+    /// When the spin was last advanced by a render update; `None` while not spinning.
+    last_update: Option<Duration>,
+}
+
+impl GradientSpin {
+    /// Starts or stops the spin, advancing the accumulated angle by the elapsed time, and
+    /// returns the current angle offset in radians.
+    pub(super) fn update(&mut self, clock: &Clock, speed_deg: f64, should_spin: bool) -> f32 {
+        let now = clock.now();
+
+        if should_spin && speed_deg > 0. {
+            if let Some(last) = self.last_update {
+                let delta = now.saturating_sub(last).as_secs_f64();
+                if delta <= SPIN_STALE.as_secs_f64() {
+                    self.offset += delta * speed_deg.to_radians();
+                    self.offset = self.offset.rem_euclid(f64::consts::TAU);
+                }
+            }
+            self.last_update = Some(now);
+        } else {
+            self.last_update = None;
+        }
+
+        self.offset as f32
+    }
+
+    fn is_spinning(&self, now: Duration) -> bool {
+        self.last_update
+            .is_some_and(|last| now.saturating_sub(last) <= SPIN_STALE)
+    }
+}
+
 impl<W: LayoutElement> Tile<W> {
     pub fn new(
         window: W,
@@ -233,6 +281,8 @@ impl<W: LayoutElement> Tile<W> {
             border_color_anim: None,
             ring_color_anim: None,
             ring_alpha_anim: None,
+            border_spin: Default::default(),
+            ring_spin: Default::default(),
             interactive_move_offset: Point::from((0., 0.)),
             unmap_snapshot: None,
             rounded_corner_damage: Default::default(),
@@ -484,6 +534,8 @@ impl<W: LayoutElement> Tile<W> {
                 .ring_alpha_anim
                 .as_ref()
                 .is_some_and(|anim| !anim.is_done())
+            || self.border_spin.is_spinning(self.clock.now())
+            || self.ring_spin.is_spinning(self.clock.now())
     }
 
     pub fn are_transitions_ongoing(&self) -> bool {
@@ -596,7 +648,14 @@ impl<W: LayoutElement> Tile<W> {
             0.
         };
 
-        let border_spin = 0.;
+        let border_spin = self.border_spin.update(
+            &self.clock,
+            self.border.config().gradient_spin_speed,
+            border_enabled
+                && !self.clock.should_complete_instantly()
+                && border_fade > 0.
+                && base_alpha > 0.,
+        );
 
         self.border.update_render_elements(
             border_window_size,
@@ -714,7 +773,14 @@ impl<W: LayoutElement> Tile<W> {
         };
         let ring_alpha = ring_alpha * base_alpha;
 
-        let ring_spin = 0.;
+        let ring_spin = self.ring_spin.update(
+            &self.clock,
+            self.focus_ring.config().gradient_spin_speed,
+            ring_enabled
+                && !self.clock.should_complete_instantly()
+                && ring_fade > 0.
+                && ring_alpha > 0.,
+        );
 
         self.focus_ring.update_render_elements(
             animated_tile_size,
@@ -744,6 +810,8 @@ impl<W: LayoutElement> Tile<W> {
         self.border_color_anim = None;
         self.ring_color_anim = None;
         self.ring_alpha_anim = None;
+        self.border_spin.last_update = None;
+        self.ring_spin.last_update = None;
     }
 
     /// Whether the focus ring is currently fading in or out.
