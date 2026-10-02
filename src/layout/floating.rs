@@ -298,6 +298,28 @@ impl<W: LayoutElement> FloatingSpace<W> {
         self.tiles.iter_mut()
     }
 
+    pub fn set_ring_suppressed(&mut self, window: &W::Id, suppressed: bool) {
+        for tile in self.tiles_mut() {
+            if tile.window().id() == window {
+                tile.ring_suppressed = suppressed;
+            }
+        }
+    }
+
+    pub fn clear_ring_suppressions(&mut self) {
+        for tile in self.tiles_mut() {
+            tile.ring_suppressed = false;
+        }
+    }
+
+    pub fn settle_ring_alpha(&mut self, window: &W::Id) {
+        for tile in self.tiles_mut() {
+            if tile.window().id() == window {
+                tile.settle_ring_alpha();
+            }
+        }
+    }
+
     pub fn any_ring_fading(&self) -> bool {
         self.tiles.iter().any(|tile| tile.is_ring_fading())
     }

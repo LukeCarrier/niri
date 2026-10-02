@@ -121,6 +121,9 @@ pub struct Tile<W: LayoutElement> {
     /// Gradient rotation state of the focus ring.
     ring_spin: GradientSpin,
 
+    /// Temporarily hides the focus ring (e.g. while the monitor-level morph ring owns it).
+    pub(super) ring_suppressed: bool,
+
     /// Offset during the initial interactive move rubberband.
     pub(super) interactive_move_offset: Point<f64, Logical>,
 
@@ -283,6 +286,7 @@ impl<W: LayoutElement> Tile<W> {
             ring_alpha_anim: None,
             border_spin: Default::default(),
             ring_spin: Default::default(),
+            ring_suppressed: false,
             interactive_move_offset: Point::from((0., 0.)),
             unmap_snapshot: None,
             rounded_corner_damage: Default::default(),
@@ -819,6 +823,14 @@ impl<W: LayoutElement> Tile<W> {
         self.ring_alpha_anim
             .as_ref()
             .is_some_and(|anim| !anim.is_done())
+    }
+
+    /// Settles the focus ring ownership fade to its final value without animating.
+    ///
+    /// Used to hand the ring back from the monitor-level morph element: the morph ring is drawn
+    /// at full opacity, so the tile's own ring must appear or disappear instantly to match.
+    pub fn settle_ring_alpha(&mut self) {
+        self.ring_alpha_anim = None;
     }
 
     pub fn scale(&self) -> f64 {
@@ -1603,7 +1615,8 @@ impl<W: LayoutElement> Tile<W> {
         // being outside the monitor or obscured by a solid colored bar, but it is visible under
         // semitransparent bars in maximized state (which is a bit weird) and in the overview (also
         // a bit weird).
-        if (focus_ring || self.is_ring_fading()) && expanded_progress < 1. {
+        if !self.ring_suppressed && (focus_ring || self.is_ring_fading()) && expanded_progress < 1.
+        {
             self.focus_ring
                 .render(ctx.renderer, location, &mut |elem| push(elem.into()));
         }

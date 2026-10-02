@@ -458,6 +458,28 @@ impl<W: LayoutElement> ScrollingSpace<W> {
         self.columns.iter_mut().flat_map(|col| col.tiles.iter_mut())
     }
 
+    pub fn set_ring_suppressed(&mut self, window: &W::Id, suppressed: bool) {
+        for tile in self.tiles_mut() {
+            if tile.window().id() == window {
+                tile.ring_suppressed = suppressed;
+            }
+        }
+    }
+
+    pub fn clear_ring_suppressions(&mut self) {
+        for tile in self.tiles_mut() {
+            tile.ring_suppressed = false;
+        }
+    }
+
+    pub fn settle_ring_alpha(&mut self, window: &W::Id) {
+        for tile in self.tiles_mut() {
+            if tile.window().id() == window {
+                tile.settle_ring_alpha();
+            }
+        }
+    }
+
     pub fn any_ring_fading(&self) -> bool {
         self.columns
             .iter()
