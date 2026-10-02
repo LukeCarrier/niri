@@ -14,9 +14,12 @@ uniform float colorspace;
 uniform float hue_interpolation;
 uniform vec4 color_from;
 uniform vec4 color_to;
+uniform vec4 color_from_inactive;
+uniform vec4 color_to_inactive;
+uniform float fade;
 uniform vec2 grad_offset;
-uniform float grad_width;
-uniform vec2 grad_vec;
+uniform float grad_angle;
+uniform vec2 grad_area_size;
 
 uniform mat3 input_to_geo;
 uniform vec2 geo_size;
@@ -196,8 +199,19 @@ vec4 color_mix(vec4 color1, vec4 color2, float color_ratio) {
 vec4 gradient_color(vec2 coords) {
     coords = coords + grad_offset;
 
+    // Project the gradient area diagonal onto the gradient direction, mirroring what the CPU
+    // used to compute and upload as grad_vec.
+    vec2 grad_dir = vec2(cos(grad_angle), sin(grad_angle));
+    vec2 grad_area_diag = grad_area_size;
+    if ((grad_dir.x < 0.0 && 0.0 <= grad_dir.y) || (0.0 <= grad_dir.x && grad_dir.y < 0.0))
+        grad_area_diag.x = -grad_area_size.x;
+
+    vec2 grad_vec = grad_dir * (dot(grad_area_diag, grad_dir) / dot(grad_dir, grad_dir));
+    if (grad_dir.y < 0.0)
+        grad_vec = -grad_vec;
+
     if ((grad_vec.x < 0.0 && 0.0 <= grad_vec.y) || (0.0 <= grad_vec.x && grad_vec.y < 0.0))
-        coords.x -= grad_width;
+        coords.x -= grad_area_size.x;
 
     float frac = dot(coords, grad_vec) / dot(grad_vec, grad_vec);
 
@@ -205,7 +219,11 @@ vec4 gradient_color(vec2 coords) {
         frac += 1.0;
 
     frac = clamp(frac, 0.0, 1.0);
-    return color_mix(color_from, color_to, frac);
+
+    // Crossfade the gradient endpoints between the inactive and active color pairs.
+    vec4 from = color_mix(color_from_inactive, color_from, fade);
+    vec4 to = color_mix(color_to_inactive, color_to, fade);
+    return color_mix(from, to, frac);
 }
 
 float niri_rounding_alpha(vec2 coords, vec2 size, vec4 corner_radius);
