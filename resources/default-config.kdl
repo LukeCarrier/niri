@@ -190,6 +190,14 @@ layout {
         // To do that, set relative-to="workspace-view".
         //
         // inactive-gradient from="#505050" to="#808080" angle=45 relative-to="workspace-view"
+
+        // Rotate the gradient slowly, in degrees per second.
+        // gradient-spin-speed 45
+
+        // With the focus-ring-morph animation enabled (see below), the focus ring slides
+        // between windows over their content by default. Set this flag to draw it behind
+        // windows instead.
+        // morph-behind-windows
     }
 
     // You can also add a border. It's similar to the focus ring, but always visible.
@@ -211,6 +219,9 @@ layout {
         // active-gradient from="#e5989b" to="#ffb4a2" angle=45 relative-to="workspace-view" in="oklch longer hue"
 
         // inactive-gradient from="#505050" to="#808080" angle=45 relative-to="workspace-view"
+
+        // Rotate the gradient slowly, in degrees per second.
+        // gradient-spin-speed 45
     }
 
     // You can enable drop shadows for windows.
@@ -303,6 +314,25 @@ animations {
 
     // Slow down all animations by this factor. Values below 1 speed them up instead.
     // slowdown 3.0
+
+    // Crossfade focus ring / border colors when focus changes.
+    // Disabled by default; set a duration to enable.
+    // focus-ring-fade {
+    //     duration-ms 500
+    //     curve "ease-out-cubic"
+    // }
+    //
+    // border-fade {
+    //     duration-ms 500
+    //     curve "ease-out-cubic"
+    // }
+
+    // Slide the focus ring between windows on the same workspace instead of fading.
+    // Disabled by default; set a duration to enable.
+    // focus-ring-morph {
+    //     duration-ms 250
+    //     curve "ease-out-cubic"
+    // }
 }
 
 // Window rules let you adjust behavior for individual windows.
