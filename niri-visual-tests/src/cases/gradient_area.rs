@@ -2,7 +2,7 @@ use std::f32::consts::{FRAC_PI_4, PI};
 use std::time::Duration;
 
 use niri::layout::focus_ring::FocusRing;
-use niri::render_helpers::border::BorderRenderElement;
+use niri::render_helpers::border::{BorderRenderElement, BorderRenderParams};
 use niri_config::{Color, CornerRadius, GradientInterpolation};
 use smithay::backend::renderer::element::RenderElement;
 use smithay::backend::renderer::gles::GlesRenderer;
@@ -95,19 +95,22 @@ impl TestCase for GradientArea {
             .render(renderer, g_loc, &mut |elem| rv.push(Box::new(elem) as _));
 
         rv.extend(
-            [BorderRenderElement::new(
-                area.size,
-                g_area,
-                GradientInterpolation::default(),
-                Color::new_unpremul(1., 0., 0., 1.),
-                Color::new_unpremul(0., 1., 0., 1.),
-                FRAC_PI_4,
-                Rectangle::from_size(rect_size).to_f64(),
-                0.,
-                CornerRadius::default(),
-                1.,
-                1.,
-            )
+            [BorderRenderElement::new(BorderRenderParams {
+                size: area.size,
+                gradient_area: g_area,
+                gradient_format: GradientInterpolation::default(),
+                color_from: Color::new_unpremul(1., 0., 0., 1.),
+                color_to: Color::new_unpremul(0., 1., 0., 1.),
+                color_from_inactive: Color::new_unpremul(1., 0., 0., 1.),
+                color_to_inactive: Color::new_unpremul(0., 1., 0., 1.),
+                fade: 1.,
+                angle: FRAC_PI_4,
+                geometry: Rectangle::from_size(rect_size).to_f64(),
+                border_width: 0.,
+                corner_radius: CornerRadius::default(),
+                scale: 1.,
+                alpha: 1.,
+            })
             .with_location(area.loc)]
             .into_iter()
             .map(|elem| Box::new(elem) as _),

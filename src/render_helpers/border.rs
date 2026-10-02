@@ -27,57 +27,38 @@ use crate::render_helpers::renderer::AsGlesFrame as _;
 #[derive(Debug, Clone)]
 pub struct BorderRenderElement {
     inner: ShaderRenderElement,
-    params: Parameters,
+    params: BorderRenderParams,
 }
 
+/// Rendering parameters for a [`BorderRenderElement`].
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct Parameters {
-    size: Size<f64, Logical>,
-    gradient_area: Rectangle<f64, Logical>,
-    gradient_format: GradientInterpolation,
-    color_from: Color,
-    color_to: Color,
-    angle: f32,
-    geometry: Rectangle<f64, Logical>,
-    border_width: f32,
-    corner_radius: CornerRadius,
+pub struct BorderRenderParams {
+    pub size: Size<f64, Logical>,
+    pub gradient_area: Rectangle<f64, Logical>,
+    pub gradient_format: GradientInterpolation,
+    /// Active-state gradient endpoint colors.
+    pub color_from: Color,
+    pub color_to: Color,
+    /// Inactive-state gradient endpoint colors.
+    pub color_from_inactive: Color,
+    pub color_to_inactive: Color,
+    /// Crossfade factor between the inactive and active color pairs.
+    ///
+    /// 0 = fully inactive, 1 = fully active.
+    pub fade: f32,
+    pub angle: f32,
+    pub geometry: Rectangle<f64, Logical>,
+    pub border_width: f32,
+    pub corner_radius: CornerRadius,
     // Should only be used for visual improvements, i.e. corner radius anti-aliasing.
-    scale: f32,
-    alpha: f32,
+    pub scale: f32,
+    pub alpha: f32,
 }
 
 impl BorderRenderElement {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        size: Size<f64, Logical>,
-        gradient_area: Rectangle<f64, Logical>,
-        gradient_format: GradientInterpolation,
-        color_from: Color,
-        color_to: Color,
-        angle: f32,
-        geometry: Rectangle<f64, Logical>,
-        border_width: f32,
-        corner_radius: CornerRadius,
-        scale: f32,
-        alpha: f32,
-    ) -> Self {
+    pub fn new(params: BorderRenderParams) -> Self {
         let inner = ShaderRenderElement::empty(ProgramType::Border, Kind::Unspecified);
-        let mut rv = Self {
-            inner,
-            params: Parameters {
-                size,
-                gradient_area,
-                gradient_format,
-                color_from,
-                color_to,
-                angle,
-                geometry,
-                border_width,
-                corner_radius,
-                scale,
-                alpha,
-            },
-        };
+        let mut rv = Self { inner, params };
         rv.update_inner();
         rv
     }
@@ -86,12 +67,15 @@ impl BorderRenderElement {
         let inner = ShaderRenderElement::empty(ProgramType::Border, Kind::Unspecified);
         Self {
             inner,
-            params: Parameters {
+            params: BorderRenderParams {
                 size: Default::default(),
                 gradient_area: Default::default(),
                 gradient_format: GradientInterpolation::default(),
                 color_from: Default::default(),
                 color_to: Default::default(),
+                color_from_inactive: Default::default(),
+                color_to_inactive: Default::default(),
+                fade: 1.,
                 angle: 0.,
                 geometry: Default::default(),
                 border_width: 0.,
@@ -106,34 +90,7 @@ impl BorderRenderElement {
         self.inner.damage_all();
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn update(
-        &mut self,
-        size: Size<f64, Logical>,
-        gradient_area: Rectangle<f64, Logical>,
-        gradient_format: GradientInterpolation,
-        color_from: Color,
-        color_to: Color,
-        angle: f32,
-        geometry: Rectangle<f64, Logical>,
-        border_width: f32,
-        corner_radius: CornerRadius,
-        scale: f32,
-        alpha: f32,
-    ) {
-        let params = Parameters {
-            size,
-            gradient_area,
-            gradient_format,
-            color_from,
-            color_to,
-            angle,
-            geometry,
-            border_width,
-            corner_radius,
-            scale,
-            alpha,
-        };
+    pub fn update(&mut self, params: BorderRenderParams) {
         if self.params == params {
             return;
         }
@@ -143,7 +100,7 @@ impl BorderRenderElement {
     }
 
     fn update_inner(&mut self) {
-        let Parameters {
+        let BorderRenderParams {
             size,
             gradient_area,
             gradient_format,
@@ -155,6 +112,7 @@ impl BorderRenderElement {
             corner_radius,
             scale,
             alpha,
+            ..
         } = self.params;
 
         let grad_offset = geometry.loc - gradient_area.loc;
