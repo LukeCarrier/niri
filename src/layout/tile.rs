@@ -19,7 +19,7 @@ use crate::animation::{Animation, Clock};
 use crate::layout::SizingMode;
 use crate::niri_render_elements;
 use crate::render_helpers::background_effect::BackgroundEffectElement;
-use crate::render_helpers::border::BorderRenderElement;
+use crate::render_helpers::border::{BorderRenderElement, BorderRenderParams};
 use crate::render_helpers::clipped_surface::{ClippedSurfaceRenderElement, RoundedCornerDamage};
 use crate::render_helpers::damage::ExtraDamage;
 use crate::render_helpers::offscreen::{OffscreenBuffer, OffscreenRenderElement};
@@ -1237,19 +1237,22 @@ impl<W: LayoutElement> Tile<W> {
                     // user-provided radius, so our blocked-out rendering should match that
                     // radius.
                     if radius != CornerRadius::default() && has_border_shader {
-                        return BorderRenderElement::new(
-                            geo.size,
-                            Rectangle::from_size(geo.size),
-                            GradientInterpolation::default(),
-                            Color::from_color32f(elem.color()),
-                            Color::from_color32f(elem.color()),
-                            0.,
-                            Rectangle::from_size(geo.size),
-                            0.,
-                            radius,
-                            scale.x as f32,
-                            1.,
-                        )
+                        return BorderRenderElement::new(BorderRenderParams {
+                            size: geo.size,
+                            gradient_area: Rectangle::from_size(geo.size),
+                            gradient_format: GradientInterpolation::default(),
+                            color_from: Color::from_color32f(elem.color()),
+                            color_to: Color::from_color32f(elem.color()),
+                            color_from_inactive: Color::from_color32f(elem.color()),
+                            color_to_inactive: Color::from_color32f(elem.color()),
+                            fade: 1.,
+                            angle: 0.,
+                            geometry: Rectangle::from_size(geo.size),
+                            border_width: 0.,
+                            corner_radius: radius,
+                            scale: scale.x as f32,
+                            alpha: 1.,
+                        })
                         .with_location(geo.loc)
                         .into();
                     }
@@ -1291,19 +1294,22 @@ impl<W: LayoutElement> Tile<W> {
 
                 let size = self.fullscreen_backdrop.size();
                 let color = self.fullscreen_backdrop.color();
-                let elem = BorderRenderElement::new(
+                let elem = BorderRenderElement::new(BorderRenderParams {
                     size,
-                    Rectangle::from_size(size),
-                    GradientInterpolation::default(),
-                    Color::from_color32f(color),
-                    Color::from_color32f(color),
-                    0.,
-                    Rectangle::from_size(size),
-                    0.,
-                    radius,
-                    scale.x as f32,
+                    gradient_area: Rectangle::from_size(size),
+                    gradient_format: GradientInterpolation::default(),
+                    color_from: Color::from_color32f(color),
+                    color_to: Color::from_color32f(color),
+                    color_from_inactive: Color::from_color32f(color),
+                    color_to_inactive: Color::from_color32f(color),
+                    fade: 1.,
+                    angle: 0.,
+                    geometry: Rectangle::from_size(size),
+                    border_width: 0.,
+                    corner_radius: radius,
+                    scale: scale.x as f32,
                     alpha,
-                )
+                })
                 .with_location(location);
                 push(elem.into());
             } else {

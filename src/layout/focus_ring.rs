@@ -5,7 +5,7 @@ use smithay::backend::renderer::element::{Element as _, Kind};
 use smithay::utils::{Logical, Point, Rectangle, Size};
 
 use crate::niri_render_elements;
-use crate::render_helpers::border::BorderRenderElement;
+use crate::render_helpers::border::{BorderRenderElement, BorderRenderParams};
 use crate::render_helpers::renderer::NiriRenderer;
 use crate::render_helpers::solid_color::{SolidColorBuffer, SolidColorRenderElement};
 
@@ -121,6 +121,23 @@ impl FocusRing {
         // * We do not divide anything, only add, subtract and multiply by integers.
         // * At rendering time, tile positions are rounded to physical pixels.
 
+        let params = BorderRenderParams {
+            size: Default::default(),
+            gradient_area: Rectangle::new(gradient_area.loc, gradient_area.size),
+            gradient_format: gradient.in_,
+            color_from: gradient.from,
+            color_to: gradient.to,
+            color_from_inactive: gradient.from,
+            color_to_inactive: gradient.to,
+            fade: 1.,
+            angle: ((gradient.angle as f32) - 90.).to_radians(),
+            geometry: Default::default(),
+            border_width: rounded_corner_border_width,
+            corner_radius: radius,
+            scale: scale as f32,
+            alpha,
+        };
+
         if is_border {
             let top_left = f64::max(width, ceil(f64::from(radius.top_left)));
             let top_right = f64::min(
@@ -180,38 +197,25 @@ impl FocusRing {
             }
 
             for (border, (loc, size)) in zip(&mut self.borders, zip(self.locations, self.sizes)) {
-                border.update(
+                border.update(BorderRenderParams {
                     size,
-                    Rectangle::new(gradient_area.loc - loc, gradient_area.size),
-                    gradient.in_,
-                    gradient.from,
-                    gradient.to,
-                    ((gradient.angle as f32) - 90.).to_radians(),
-                    Rectangle::new(full_rect.loc - loc, full_rect.size),
-                    rounded_corner_border_width,
-                    radius,
-                    scale as f32,
-                    alpha,
-                );
+                    gradient_area: Rectangle::new(gradient_area.loc - loc, gradient_area.size),
+                    geometry: Rectangle::new(full_rect.loc - loc, full_rect.size),
+                    ..params
+                });
             }
         } else {
             self.sizes[0] = self.full_size;
             self.buffers[0].resize(self.sizes[0]);
             self.locations[0] = Point::from((-width, -width));
 
-            self.borders[0].update(
-                self.sizes[0],
-                Rectangle::new(gradient_area.loc - self.locations[0], gradient_area.size),
-                gradient.in_,
-                gradient.from,
-                gradient.to,
-                ((gradient.angle as f32) - 90.).to_radians(),
-                Rectangle::new(full_rect.loc - self.locations[0], full_rect.size),
-                rounded_corner_border_width,
-                radius,
-                scale as f32,
-                alpha,
-            );
+            let loc = self.locations[0];
+            self.borders[0].update(BorderRenderParams {
+                size: self.sizes[0],
+                gradient_area: Rectangle::new(gradient_area.loc - loc, gradient_area.size),
+                geometry: Rectangle::new(full_rect.loc - loc, full_rect.size),
+                ..params
+            });
         }
     }
 

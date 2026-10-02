@@ -28,7 +28,7 @@ use crate::layout::focus_ring::{FocusRing, FocusRingRenderElement};
 use crate::layout::{Layout, LayoutElement as _, LayoutElementRenderElement};
 use crate::niri::Niri;
 use crate::niri_render_elements;
-use crate::render_helpers::border::BorderRenderElement;
+use crate::render_helpers::border::{BorderRenderElement, BorderRenderParams};
 use crate::render_helpers::clipped_surface::ClippedSurfaceRenderElement;
 use crate::render_helpers::gradient_fade_texture::GradientFadeTextureRenderElement;
 use crate::render_helpers::offscreen::{OffscreenBuffer, OffscreenRenderElement};
@@ -401,19 +401,23 @@ impl Thumbnail {
                 // user-provided radius, so our blocked-out rendering should match that
                 // radius.
                 if radius != CornerRadius::default() && has_border_shader {
-                    return BorderRenderElement::new(
-                        geo.size,
-                        Rectangle::from_size(geo.size),
-                        GradientInterpolation::default(),
-                        Color::from_color32f(elem.color()),
-                        Color::from_color32f(elem.color()),
-                        0.,
-                        Rectangle::from_size(geo.size),
-                        0.,
-                        radius,
-                        scale as f32,
-                        1.,
-                    )
+                    let color = Color::from_color32f(elem.color());
+                    return BorderRenderElement::new(BorderRenderParams {
+                        size: geo.size,
+                        gradient_area: Rectangle::from_size(geo.size),
+                        gradient_format: GradientInterpolation::default(),
+                        color_from: color,
+                        color_to: color,
+                        color_from_inactive: color,
+                        color_to_inactive: color,
+                        fade: 1.,
+                        angle: 0.,
+                        geometry: Rectangle::from_size(geo.size),
+                        border_width: 0.,
+                        corner_radius: radius,
+                        scale: scale as f32,
+                        alpha: 1.,
+                    })
                     .into();
                 }
 

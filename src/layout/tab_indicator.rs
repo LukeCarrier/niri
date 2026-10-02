@@ -8,7 +8,7 @@ use super::tile::Tile;
 use super::LayoutElement;
 use crate::animation::{Animation, Clock};
 use crate::niri_render_elements;
-use crate::render_helpers::border::BorderRenderElement;
+use crate::render_helpers::border::{BorderRenderElement, BorderRenderParams};
 use crate::render_helpers::renderer::NiriRenderer;
 use crate::utils::{
     floor_logical_in_physical_max1, round_logical_in_physical, round_logical_in_physical_max1,
@@ -253,19 +253,22 @@ impl TabIndicator {
             let radius = radius.fit_to(rect.size.w as f32, rect.size.h as f32);
             tabs_left -= 1;
 
-            shader.update(
-                rect.size,
+            shader.update(BorderRenderParams {
+                size: rect.size,
                 gradient_area,
-                tab.gradient.in_,
+                gradient_format: tab.gradient.in_,
                 color_from,
                 color_to,
-                ((tab.gradient.angle as f32) - 90.).to_radians(),
-                Rectangle::from_size(rect.size),
-                0.,
-                radius,
-                scale as f32,
-                1.,
-            );
+                color_from_inactive: color_from,
+                color_to_inactive: color_to,
+                fade: 1.,
+                angle: ((tab.gradient.angle as f32) - 90.).to_radians(),
+                geometry: Rectangle::from_size(rect.size),
+                border_width: 0.,
+                corner_radius: radius,
+                scale: scale as f32,
+                alpha: 1.,
+            });
         }
     }
 
