@@ -269,6 +269,7 @@ impl<W: LayoutElement> FloatingSpace<W> {
     pub fn update_render_elements(
         &mut self,
         is_active: bool,
+        ring_owned: bool,
         view_rect: Rectangle<f64, Logical>,
         layer: RenderLayer,
     ) {
@@ -281,10 +282,11 @@ impl<W: LayoutElement> FloatingSpace<W> {
 
             let id = tile.window().id();
             let is_active = is_active && Some(id) == active.as_ref();
+            let ring_owned = ring_owned && Some(id) == active.as_ref();
 
             let mut tile_view_rect = view_rect;
             tile_view_rect.loc -= offset + tile.render_offset();
-            tile.update_render_elements(is_active, tile_view_rect);
+            tile.update_render_elements(is_active, ring_owned, tile_view_rect);
         }
     }
 
@@ -294,6 +296,10 @@ impl<W: LayoutElement> FloatingSpace<W> {
 
     pub fn tiles_mut(&mut self) -> impl Iterator<Item = &mut Tile<W>> + '_ {
         self.tiles.iter_mut()
+    }
+
+    pub fn any_ring_fading(&self) -> bool {
+        self.tiles.iter().any(|tile| tile.is_ring_fading())
     }
 
     pub fn tiles_with_offsets(&self) -> impl Iterator<Item = (&Tile<W>, Point<f64, Logical>)> + '_ {
@@ -1093,8 +1099,10 @@ impl<W: LayoutElement> FloatingSpace<W> {
                 continue;
             }
 
-            // For the active tile, draw the focus ring.
-            let focus_ring = focus_ring && Some(tile.window().id()) == active.as_ref();
+            // For the active tile, draw the focus ring. Tiles that are mid-fade keep rendering
+            // their ring even after losing ownership.
+            let focus_ring = focus_ring
+                && (Some(tile.window().id()) == active.as_ref() || tile.is_ring_fading());
 
             let xray_pos = xray_pos.offset(tile_pos);
             tile.render(ctx.r(), tile_pos, xray_pos, focus_ring, &mut |elem| {

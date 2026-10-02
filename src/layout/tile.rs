@@ -96,6 +96,24 @@ pub struct Tile<W: LayoutElement> {
     /// The animation of the tile's opacity.
     pub(super) alpha_animation: Option<AlphaAnimation>,
 
+    /// Whether this tile's focus ring is the visible one within its workspace.
+    ring_owned: bool,
+
+    /// Whether the border showed active colors on the last render update.
+    was_border_active: bool,
+
+    /// Whether the focus ring showed active colors on the last render update.
+    was_ring_active: bool,
+
+    /// The crossfade animation of the border between inactive and active colors.
+    border_color_anim: Option<Animation>,
+
+    /// The crossfade animation of the focus ring between inactive and active colors.
+    ring_color_anim: Option<Animation>,
+
+    /// The appearance (alpha) animation of the focus ring when it gains or loses ownership.
+    ring_alpha_anim: Option<Animation>,
+
     /// Offset during the initial interactive move rubberband.
     pub(super) interactive_move_offset: Point<f64, Logical>,
 
@@ -209,6 +227,12 @@ impl<W: LayoutElement> Tile<W> {
             move_x_animation: None,
             move_y_animation: None,
             alpha_animation: None,
+            ring_owned: false,
+            was_border_active: false,
+            was_ring_active: false,
+            border_color_anim: None,
+            ring_color_anim: None,
+            ring_alpha_anim: None,
             interactive_move_offset: Point::from((0., 0.)),
             unmap_snapshot: None,
             rounded_corner_damage: Default::default(),
@@ -446,7 +470,20 @@ impl<W: LayoutElement> Tile<W> {
     }
 
     pub fn are_animations_ongoing(&self) -> bool {
-        self.are_transitions_ongoing() || self.window.rules().baba_is_float == Some(true)
+        self.are_transitions_ongoing()
+            || self.window.rules().baba_is_float == Some(true)
+            || self
+                .border_color_anim
+                .as_ref()
+                .is_some_and(|anim| !anim.is_done())
+            || self
+                .ring_color_anim
+                .as_ref()
+                .is_some_and(|anim| !anim.is_done())
+            || self
+                .ring_alpha_anim
+                .as_ref()
+                .is_some_and(|anim| !anim.is_done())
     }
 
     pub fn are_transitions_ongoing(&self) -> bool {
@@ -470,7 +507,12 @@ impl<W: LayoutElement> Tile<W> {
                 .is_some_and(|anim| anim.is_between_workspaces)
     }
 
-    pub fn update_render_elements(&mut self, is_active: bool, view_rect: Rectangle<f64, Logical>) {
+    pub fn update_render_elements(
+        &mut self,
+        is_active: bool,
+        ring_owned: bool,
+        view_rect: Rectangle<f64, Logical>,
+    ) {
         let rules = self.window.rules();
         let animated_tile_size = self.animated_tile_size();
         let expanded_progress = self.expanded_progress();
@@ -504,18 +546,69 @@ impl<W: LayoutElement> Tile<W> {
             .geometry_corner_radius()
             .expanded_by(border_width as f32)
             .scaled_by(1. - expanded_progress as f32);
+
+        let base_alpha = 1. - expanded_progress as f32;
+        let border_view_rect = Rectangle::new(
+            view_rect.loc - Point::from((border_width, border_width)),
+            view_rect.size,
+        );
+
+        // Animate the border colors between inactive and active on focus changes.
+        let border_enabled = !self.border.is_off();
+        if border_enabled {
+            if is_active != self.was_border_active {
+                // Retarget from the currently displayed value to avoid a jump mid-fade.
+                let from = self
+                    .border_color_anim
+                    .as_ref()
+                    .map_or(if self.was_border_active { 1. } else { 0. }, |anim| {
+                        anim.clamped_value()
+                    });
+                self.border_color_anim = Some(Animation::new(
+                    self.clock.clone(),
+                    from,
+                    if is_active { 1. } else { 0. },
+                    0.,
+                    self.options.animations.border_fade.0,
+                ));
+                self.was_border_active = is_active;
+            }
+        } else {
+            self.border_color_anim = None;
+            self.was_border_active = is_active;
+        }
+
+        let border_fade = if border_enabled {
+            match &self.border_color_anim {
+                Some(anim) if !anim.is_done() => anim.clamped_value() as f32,
+                _ => {
+                    self.border_color_anim = None;
+                    if is_active {
+                        1.
+                    } else {
+                        0.
+                    }
+                }
+            }
+        } else if is_active {
+            1.
+        } else {
+            0.
+        };
+
+        let border_spin = 0.;
+
         self.border.update_render_elements(
             border_window_size,
             is_active,
             !draw_border_with_background,
             self.window.is_urgent(),
-            Rectangle::new(
-                view_rect.loc - Point::from((border_width, border_width)),
-                view_rect.size,
-            ),
+            border_view_rect,
             radius,
             self.scale,
-            1. - expanded_progress as f32,
+            base_alpha,
+            border_fade,
+            border_spin,
         );
 
         let radius = if self.visual_border_width().is_some() {
@@ -530,7 +623,7 @@ impl<W: LayoutElement> Tile<W> {
             is_active,
             radius,
             self.scale,
-            1. - expanded_progress as f32,
+            base_alpha,
         );
 
         let draw_focus_ring_with_background = if self.border.is_off() {
@@ -539,6 +632,90 @@ impl<W: LayoutElement> Tile<W> {
             false
         };
         let radius = radius.expanded_by(self.focus_ring.width() as f32);
+
+        // Animate the focus ring: colors crossfade on focus changes, while alpha fades the ring
+        // in and out as it gains or loses ownership within the workspace.
+        let ring_enabled = !self.focus_ring.is_off();
+        if ring_enabled {
+            if is_active != self.was_ring_active {
+                // Retarget from the currently displayed value to avoid a jump mid-fade.
+                let from = self
+                    .ring_color_anim
+                    .as_ref()
+                    .map_or(if self.was_ring_active { 1. } else { 0. }, |anim| {
+                        anim.clamped_value()
+                    });
+                self.ring_color_anim = Some(Animation::new(
+                    self.clock.clone(),
+                    from,
+                    if is_active { 1. } else { 0. },
+                    0.,
+                    self.options.animations.focus_ring_fade.0,
+                ));
+                self.was_ring_active = is_active;
+            }
+
+            if ring_owned != self.ring_owned {
+                // Retarget from the currently displayed value to avoid a jump mid-fade.
+                let from = self
+                    .ring_alpha_anim
+                    .as_ref()
+                    .map_or(if self.ring_owned { 1. } else { 0. }, |anim| {
+                        anim.clamped_value()
+                    });
+                self.ring_alpha_anim = Some(Animation::new(
+                    self.clock.clone(),
+                    from,
+                    if ring_owned { 1. } else { 0. },
+                    0.,
+                    self.options.animations.focus_ring_fade.0,
+                ));
+                self.ring_owned = ring_owned;
+            }
+        } else {
+            self.ring_color_anim = None;
+            self.ring_alpha_anim = None;
+            self.was_ring_active = is_active;
+            self.ring_owned = ring_owned;
+        }
+
+        let ring_fade = if ring_enabled {
+            match &self.ring_color_anim {
+                Some(anim) if !anim.is_done() => anim.clamped_value() as f32,
+                _ => {
+                    self.ring_color_anim = None;
+                    if is_active {
+                        1.
+                    } else {
+                        0.
+                    }
+                }
+            }
+        } else if is_active {
+            1.
+        } else {
+            0.
+        };
+
+        let ring_alpha = if ring_enabled {
+            match &self.ring_alpha_anim {
+                Some(anim) if !anim.is_done() => anim.clamped_value() as f32,
+                _ => {
+                    self.ring_alpha_anim = None;
+                    if ring_owned {
+                        1.
+                    } else {
+                        0.
+                    }
+                }
+            }
+        } else {
+            0.
+        };
+        let ring_alpha = ring_alpha * base_alpha;
+
+        let ring_spin = 0.;
+
         self.focus_ring.update_render_elements(
             animated_tile_size,
             is_active,
@@ -547,10 +724,33 @@ impl<W: LayoutElement> Tile<W> {
             view_rect,
             radius,
             self.scale,
-            1. - expanded_progress as f32,
+            ring_alpha,
+            ring_fade,
+            ring_spin,
         );
 
         self.fullscreen_backdrop.resize(animated_tile_size);
+    }
+
+    /// Settles all decoration fade animations to the unfocused state without animating.
+    ///
+    /// This is used before capturing an unmap snapshot, so that the snapshot shows the tile as
+    /// unfocused (matching how snapshots looked before fades existed) without restarting fades
+    /// if the tile keeps rendering afterwards.
+    pub fn settle_decoration_fades(&mut self) {
+        self.was_border_active = false;
+        self.was_ring_active = false;
+        self.ring_owned = false;
+        self.border_color_anim = None;
+        self.ring_color_anim = None;
+        self.ring_alpha_anim = None;
+    }
+
+    /// Whether the focus ring is currently fading in or out.
+    pub fn is_ring_fading(&self) -> bool {
+        self.ring_alpha_anim
+            .as_ref()
+            .is_some_and(|anim| !anim.is_done())
     }
 
     pub fn scale(&self) -> f64 {
@@ -1335,7 +1535,7 @@ impl<W: LayoutElement> Tile<W> {
         // being outside the monitor or obscured by a solid colored bar, but it is visible under
         // semitransparent bars in maximized state (which is a bit weird) and in the overview (also
         // a bit weird).
-        if focus_ring && expanded_progress < 1. {
+        if (focus_ring || self.is_ring_fading()) && expanded_progress < 1. {
             self.focus_ring
                 .render(ctx.renderer, location, &mut |elem| push(elem.into()));
         }
