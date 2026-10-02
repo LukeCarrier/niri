@@ -65,14 +65,20 @@ impl FocusRing {
         radius: CornerRadius,
         scale: f64,
         alpha: f32,
+        fade: f32,
+        gradient_angle_offset: f32,
     ) {
         let width = self.config.width;
         self.full_size = win_size + Size::from((width, width)).upscale(2.);
         self.is_border = is_border;
 
+        // During a fade-out, keep showing active colors until the fade completes; this also
+        // matches what the solid-color fallback path renders while the border shader is missing.
+        let show_active = is_active || fade > 0.;
+
         let color = if is_urgent {
             self.config.urgent_color
-        } else if is_active {
+        } else if show_active {
             self.config.active_color
         } else {
             self.config.inactive_color
@@ -84,18 +90,40 @@ impl FocusRing {
 
         let radius = radius.fit_to(self.full_size.w as f32, self.full_size.h as f32);
 
-        let gradient = if is_urgent {
-            self.config.urgent_gradient
-        } else if is_active {
-            self.config.active_gradient
+        // The two color pairs that the shader crossfades between. Urgent wins immediately:
+        // both pairs become the urgent colors, neutralizing the fade.
+        let active = self
+            .config
+            .active_gradient
+            .unwrap_or_else(|| Gradient::from(self.config.active_color));
+        let inactive = self
+            .config
+            .inactive_gradient
+            .unwrap_or_else(|| Gradient::from(self.config.inactive_color));
+        let urgent = self
+            .config
+            .urgent_gradient
+            .unwrap_or_else(|| Gradient::from(self.config.urgent_color));
+        let (active, inactive) = if is_urgent {
+            (urgent, urgent)
         } else {
-            self.config.inactive_gradient
+            (active, inactive)
         };
 
-        self.use_border_shader = radius != CornerRadius::default() || gradient.is_some();
+        // The representative gradient determines the gradient area, interpolation, and base
+        // angle for this frame. Steady states pick the corresponding pair exactly; mid-fade
+        // the pairs may differ in these properties, which is invisible in practice.
+        let gradient = if show_active { active } else { inactive };
+        let has_user_gradient = if show_active {
+            self.config.active_gradient.is_some()
+        } else {
+            self.config.inactive_gradient.is_some()
+        };
 
-        // Set the defaults for solid color + rounded corners.
-        let gradient = gradient.unwrap_or_else(|| Gradient::from(color));
+        // Use the border shader for gradients, rounded corners, or an in-progress crossfade.
+        // If the shader is missing, the solid-color path renders an instant cut instead.
+        self.use_border_shader =
+            radius != CornerRadius::default() || has_user_gradient || (fade != 0. && fade != 1.);
 
         let full_rect = Rectangle::new(Point::from((-width, -width)), self.full_size);
         let gradient_area = match gradient.relative_to {
@@ -121,16 +149,18 @@ impl FocusRing {
         // * We do not divide anything, only add, subtract and multiply by integers.
         // * At rendering time, tile positions are rounded to physical pixels.
 
+        let angle = ((gradient.angle as f32) - 90.).to_radians() + gradient_angle_offset;
+
         let params = BorderRenderParams {
             size: Default::default(),
             gradient_area: Rectangle::new(gradient_area.loc, gradient_area.size),
             gradient_format: gradient.in_,
-            color_from: gradient.from,
-            color_to: gradient.to,
-            color_from_inactive: gradient.from,
-            color_to_inactive: gradient.to,
-            fade: 1.,
-            angle: ((gradient.angle as f32) - 90.).to_radians(),
+            color_from: active.from,
+            color_to: active.to,
+            color_from_inactive: inactive.from,
+            color_to_inactive: inactive.to,
+            fade,
+            angle,
             geometry: Default::default(),
             border_width: rounded_corner_border_width,
             corner_radius: radius,

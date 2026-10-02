@@ -426,7 +426,12 @@ impl<W: LayoutElement> ScrollingSpace<W> {
             || !self.closing_windows.is_empty()
     }
 
-    pub fn update_render_elements(&mut self, is_active: bool, layer: RenderLayer) {
+    pub fn update_render_elements(
+        &mut self,
+        is_active: bool,
+        ring_owned: bool,
+        layer: RenderLayer,
+    ) {
         let view_pos = Point::from((self.view_pos(), 0.));
         let view_size = self.view_size;
         let active_idx = self.active_column_idx;
@@ -437,10 +442,11 @@ impl<W: LayoutElement> ScrollingSpace<W> {
             }
 
             let is_active = is_active && col_idx == active_idx;
+            let ring_owned = ring_owned && col_idx == active_idx;
             let col_off = Point::from((col_x, 0.));
             let col_pos = view_pos - col_off - col.render_offset();
             let view_rect = Rectangle::new(col_pos, view_size);
-            col.update_render_elements(is_active, view_rect);
+            col.update_render_elements(is_active, ring_owned, view_rect);
         }
     }
 
@@ -450,6 +456,13 @@ impl<W: LayoutElement> ScrollingSpace<W> {
 
     pub fn tiles_mut(&mut self) -> impl Iterator<Item = &mut Tile<W>> + '_ {
         self.columns.iter_mut().flat_map(|col| col.tiles.iter_mut())
+    }
+
+    pub fn any_ring_fading(&self) -> bool {
+        self.columns
+            .iter()
+            .flat_map(|col| col.tiles.iter())
+            .any(|tile| tile.is_ring_fading())
     }
 
     pub fn is_empty(&self) -> bool {
@@ -2990,8 +3003,9 @@ impl<W: LayoutElement> ScrollingSpace<W> {
 
                 // And now the drawing logic.
 
-                // For the active tile (which comes first), draw the focus ring.
-                let focus_ring = focus_ring && first;
+                // For the active tile (which comes first), draw the focus ring. Tiles that are
+                // mid-fade keep rendering their ring even after losing ownership.
+                let focus_ring = focus_ring && (first || tile.is_ring_fading());
                 first = false;
 
                 // In the scrolling layout, we currently use visible only for hidden tabs in the
@@ -4180,14 +4194,20 @@ impl<W: LayoutElement> Column<W> {
                 .any(|tile| tile.is_moving_between_workspaces())
     }
 
-    pub fn update_render_elements(&mut self, is_active: bool, view_rect: Rectangle<f64, Logical>) {
+    pub fn update_render_elements(
+        &mut self,
+        is_active: bool,
+        ring_owned: bool,
+        view_rect: Rectangle<f64, Logical>,
+    ) {
         let active_idx = self.active_tile_idx;
         for (tile_idx, (tile, tile_off)) in self.tiles_mut().enumerate() {
             let is_active = is_active && tile_idx == active_idx;
+            let ring_owned = ring_owned && tile_idx == active_idx;
 
             let mut tile_view_rect = view_rect;
             tile_view_rect.loc -= tile_off + tile.render_offset();
-            tile.update_render_elements(is_active, tile_view_rect);
+            tile.update_render_elements(is_active, ring_owned, tile_view_rect);
         }
 
         let config = self.tab_indicator.config();

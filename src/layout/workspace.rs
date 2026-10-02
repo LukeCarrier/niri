@@ -379,12 +379,18 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn update_render_elements(&mut self, is_active: bool, layer: RenderLayer) {
-        self.scrolling
-            .update_render_elements(is_active && !self.floating_is_active.get(), layer);
+        let floating_is_active = self.floating_is_active.get();
+
+        self.scrolling.update_render_elements(
+            is_active && !floating_is_active,
+            !floating_is_active,
+            layer,
+        );
 
         let view_rect = Rectangle::from_size(self.view_size);
         self.floating.update_render_elements(
-            is_active && self.floating_is_active.get(),
+            is_active && floating_is_active,
+            floating_is_active,
             view_rect,
             layer,
         );
@@ -1663,7 +1669,12 @@ impl<W: LayoutElement> Workspace<W> {
         layer: RenderLayer,
         push: &mut dyn FnMut(WorkspaceRenderElement<R>),
     ) {
-        let scrolling_focus_ring = focus_ring && !self.floating_is_active();
+        // Allow the lane that is fading out a tile which just lost ring ownership to keep
+        // rendering it even when the other lane is the active one (e.g. focus moved from a
+        // floating window to a tiled one).
+        let floating_is_active = self.floating_is_active.get();
+        let scrolling_focus_ring =
+            focus_ring && (!floating_is_active || self.scrolling.any_ring_fading());
         self.scrolling
             .render(ctx, xray_pos, scrolling_focus_ring, layer, &mut |elem| {
                 push(elem.into())
@@ -1683,7 +1694,8 @@ impl<W: LayoutElement> Workspace<W> {
         }
 
         let view_rect = Rectangle::from_size(self.view_size);
-        let floating_focus_ring = focus_ring && self.floating_is_active();
+        let floating_focus_ring =
+            focus_ring && (self.floating_is_active() || self.floating.any_ring_fading());
         self.floating.render(
             ctx,
             xray_pos,
@@ -1736,7 +1748,8 @@ impl<W: LayoutElement> Workspace<W> {
             if tile.window().id() == window {
                 let view_pos = Point::from((-tile_pos.x, -tile_pos.y));
                 let view_rect = Rectangle::new(view_pos, view_size);
-                tile.update_render_elements(false, view_rect);
+                tile.settle_decoration_fades();
+                tile.update_render_elements(false, false, view_rect);
                 let xray_pos = xray_pos.offset(tile_pos);
                 tile.store_unmap_snapshot_if_empty(
                     renderer,
