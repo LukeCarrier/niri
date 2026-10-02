@@ -106,31 +106,21 @@ impl BorderRenderElement {
             gradient_format,
             color_from,
             color_to,
+            color_from_inactive,
+            color_to_inactive,
+            fade,
             angle,
             geometry,
             border_width,
             corner_radius,
             scale,
             alpha,
-            ..
         } = self.params;
 
         let grad_offset = geometry.loc - gradient_area.loc;
         let grad_offset = Vec2::new(grad_offset.x as f32, grad_offset.y as f32);
 
-        let grad_dir = Vec2::from_angle(angle);
-
-        let (w, h) = (gradient_area.size.w as f32, gradient_area.size.h as f32);
-
-        let mut grad_area_diag = Vec2::new(w, h);
-        if (grad_dir.x < 0. && 0. <= grad_dir.y) || (0. <= grad_dir.x && grad_dir.y < 0.) {
-            grad_area_diag.x = -w;
-        }
-
-        let mut grad_vec = grad_area_diag.project_onto(grad_dir);
-        if grad_dir.y < 0. {
-            grad_vec = -grad_vec;
-        }
+        let grad_area_size = Vec2::new(gradient_area.size.w as f32, gradient_area.size.h as f32);
 
         let area_size = Vec2::new(size.w as f32, size.h as f32);
 
@@ -164,9 +154,15 @@ impl BorderRenderElement {
                 Uniform::new("hue_interpolation", hue_interpolation),
                 Uniform::new("color_from", color_from.to_array_unpremul()),
                 Uniform::new("color_to", color_to.to_array_unpremul()),
+                Uniform::new(
+                    "color_from_inactive",
+                    color_from_inactive.to_array_unpremul(),
+                ),
+                Uniform::new("color_to_inactive", color_to_inactive.to_array_unpremul()),
+                Uniform::new("fade", fade),
                 Uniform::new("grad_offset", grad_offset.to_array()),
-                Uniform::new("grad_width", w),
-                Uniform::new("grad_vec", grad_vec.to_array()),
+                Uniform::new("grad_angle", angle),
+                Uniform::new("grad_area_size", grad_area_size.to_array()),
                 mat3_uniform("input_to_geo", input_to_geo),
                 Uniform::new("geo_size", geo_size.to_array()),
                 Uniform::new("outer_radius", <[f32; 4]>::from(corner_radius)),
