@@ -1653,6 +1653,27 @@ impl<W: LayoutElement> Workspace<W> {
         }
     }
 
+    pub fn set_ring_suppressed(&mut self, window: &W::Id, suppressed: bool) {
+        if self.floating.has_window(window) {
+            self.floating.set_ring_suppressed(window, suppressed);
+        } else {
+            self.scrolling.set_ring_suppressed(window, suppressed);
+        }
+    }
+
+    pub fn clear_ring_suppressions(&mut self) {
+        self.floating.clear_ring_suppressions();
+        self.scrolling.clear_ring_suppressions();
+    }
+
+    pub fn settle_ring_alpha(&mut self, window: &W::Id) {
+        if self.floating.has_window(window) {
+            self.floating.settle_ring_alpha(window);
+        } else {
+            self.scrolling.settle_ring_alpha(window);
+        }
+    }
+
     pub fn popup_target_rect(&self, window: &W::Id) -> Option<Rectangle<f64, Logical>> {
         if self.floating.has_window(window) {
             self.floating.popup_target_rect(window)

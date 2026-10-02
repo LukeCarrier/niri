@@ -10,6 +10,7 @@ use smithay::backend::renderer::element::utils::{
 use smithay::output::Output;
 use smithay::utils::{Logical, Point, Rectangle, Size};
 
+use super::focus_ring_morph::FocusRingMorphElement;
 use super::insert_hint_element::{InsertHintElement, InsertHintRenderElement};
 use super::scrolling::{Column, ColumnWidth};
 use super::tile::Tile;
@@ -77,6 +78,12 @@ pub struct Monitor<W: LayoutElement> {
     insert_hint_element: InsertHintElement,
     /// Location to render the insert hint element.
     insert_hint_render_loc: Option<InsertHintRenderLoc>,
+    /// Focus ring morph element for rendering.
+    focus_ring_morph: FocusRingMorphElement,
+    /// Source and target window ids of the in-progress focus ring morph.
+    focus_ring_morph_ids: Option<(W::Id, W::Id)>,
+    /// The active window as of the previous render update, for morph detection.
+    last_active_window: Option<ActiveWindowSnapshot<W::Id>>,
     /// Whether the overview is open.
     pub(super) overview_open: bool,
     /// Progress of the overview zoom animation, 1 is fully in overview.
@@ -151,6 +158,18 @@ pub(super) struct InsertHint {
 struct InsertHintRenderLoc {
     workspace: InsertWorkspace,
     location: Point<f64, Logical>,
+}
+
+/// The active window as of the previous render update, used to detect focus changes for the
+/// focus ring morph.
+#[derive(Debug, Clone)]
+struct ActiveWindowSnapshot<WId> {
+    workspace: WorkspaceId,
+    id: WId,
+    rect: Rectangle<f64, Logical>,
+    radius: CornerRadius,
+    fullscreen: bool,
+    urgent: bool,
 }
 
 #[derive(Debug)]
@@ -340,6 +359,9 @@ impl<W: LayoutElement> Monitor<W> {
             insert_hint: None,
             insert_hint_element: InsertHintElement::new(options.layout.insert_hint),
             insert_hint_render_loc: None,
+            focus_ring_morph: FocusRingMorphElement::new(options.layout.focus_ring),
+            focus_ring_morph_ids: None,
+            last_active_window: None,
             overview_open: false,
             overview_progress: None,
             workspace_switch: None,
@@ -1075,6 +1097,7 @@ impl<W: LayoutElement> Monitor<W> {
             .as_ref()
             .is_some_and(|s| s.is_animation_ongoing())
             || self.workspaces.iter().any(|ws| ws.are_animations_ongoing())
+            || self.focus_ring_morph.is_ongoing()
     }
 
     pub fn are_transitions_ongoing(&self) -> bool {
@@ -1086,6 +1109,8 @@ impl<W: LayoutElement> Monitor<W> {
     }
 
     pub fn update_render_elements(&mut self, is_active: bool) {
+        self.update_focus_ring_morph(is_active);
+
         let mut insert_hint_ws_geo = None;
         let insert_hint_ws_id = self
             .insert_hint
@@ -1184,6 +1209,145 @@ impl<W: LayoutElement> Monitor<W> {
         }
     }
 
+    fn active_window_snapshot(&self) -> Option<ActiveWindowSnapshot<W::Id>> {
+        let ws = self.active_workspace_ref();
+        ws.active_window().and_then(|win| {
+            let rect = ws.active_window_visual_rectangle()?;
+            Some(ActiveWindowSnapshot {
+                workspace: ws.id(),
+                id: win.id().clone(),
+                rect,
+                radius: win.geometry_corner_radius(),
+                fullscreen: win.pending_sizing_mode().is_fullscreen(),
+                urgent: win.is_urgent(),
+            })
+        })
+    }
+
+    /// Detects focus changes on the active workspace and drives the focus ring morph.
+    ///
+    /// Runs before workspace render elements are updated, so that the source and target tiles can
+    /// be told to suppress their own focus rings for the duration of the morph.
+    fn update_focus_ring_morph(&mut self, is_active: bool) {
+        // Clear ring suppressions from the previous update; reapply below while a morph is
+        // ongoing.
+        for ws in &mut self.workspaces {
+            ws.clear_ring_suppressions();
+        }
+
+        if !is_active {
+            // On inactive monitors the per-tile fades own the ring (with inactive colors);
+            // there is nothing to morph. Drop any morph in progress without settling so the
+            // tiles' color fades take over, and track the active window so that focusing the
+            // monitor later doesn't start a morph from a stale rect.
+            self.focus_ring_morph.clear();
+            self.focus_ring_morph_ids = None;
+            self.last_active_window = self.active_window_snapshot();
+            return;
+        }
+
+        let ring_config = self.options.layout.focus_ring;
+        let morph_anim = self.options.animations.focus_ring_morph.0;
+        let spin_speed = ring_config.gradient_spin_speed;
+        let ring_eligible = !ring_config.off && ring_config.width > 0.;
+
+        let current = self.active_window_snapshot();
+
+        let was_ongoing = self.focus_ring_morph.is_ongoing();
+        let previous = std::mem::replace(&mut self.last_active_window, current.clone());
+
+        let focus_changed = match (&previous, &current) {
+            (Some(prev), Some(cur)) => prev.id != cur.id || prev.workspace != cur.workspace,
+            (Some(_), None) => true,
+            _ => false,
+        };
+
+        if focus_changed {
+            let prev_source = self
+                .focus_ring_morph_ids
+                .as_ref()
+                .map(|(src, _)| src.clone());
+            // Mid-morph refocus: travel from the currently displayed rect.
+            let mid_flight = was_ongoing.then(|| {
+                (
+                    self.focus_ring_morph.current_rect(),
+                    self.focus_ring_morph.current_radius(),
+                )
+            });
+            self.focus_ring_morph.clear();
+            self.focus_ring_morph_ids = None;
+
+            if let (Some(prev), Some(cur)) = (&previous, &current) {
+                // Same workspace only; targets that are (going) fullscreen fall back to the
+                // per-tile fade instead.
+                let eligible = ring_eligible
+                    && prev.workspace == cur.workspace
+                    && !prev.fullscreen
+                    && !cur.fullscreen;
+
+                if eligible {
+                    let (from, from_radius) = mid_flight.unwrap_or((prev.rect, prev.radius));
+                    self.focus_ring_morph.start(
+                        &self.clock,
+                        from,
+                        cur.rect,
+                        from_radius,
+                        cur.radius,
+                        morph_anim,
+                    );
+
+                    if self.focus_ring_morph.is_ongoing() {
+                        // Keep the original source of the travel suppressed across retargets.
+                        let source = prev_source.unwrap_or_else(|| prev.id.clone());
+                        self.focus_ring_morph_ids = Some((source, cur.id.clone()));
+                    }
+                }
+            }
+        } else if was_ongoing {
+            // No focus change; keep the morph going towards the window's current rect. Cancel
+            // if the ring got disabled or the target goes fullscreen mid-morph; the per-tile
+            // fade takes over from there.
+            if !ring_eligible || current.as_ref().is_some_and(|c| c.fullscreen) {
+                self.focus_ring_morph.clear();
+                self.focus_ring_morph_ids = None;
+            } else if let Some(cur) = &current {
+                self.focus_ring_morph.set_target(cur.rect, cur.radius);
+            }
+        } else {
+            // Morph finished (or never ran). Hand the ring back to the tiles with settled
+            // ownership fades so the handoff is seamless.
+            if let Some((source, target)) = self.focus_ring_morph_ids.take() {
+                if let Some(cur) = &current {
+                    if let Some(idx) = self.idx_of_ws(cur.workspace) {
+                        self.workspaces[idx].settle_ring_alpha(&source);
+                        self.workspaces[idx].settle_ring_alpha(&target);
+                    }
+                }
+            }
+            self.focus_ring_morph.clear();
+        }
+
+        // Suppress the source and target tiles' own focus rings, and drive the morph ring's
+        // render elements.
+        if let (Some((source, target)), Some(cur)) = (&self.focus_ring_morph_ids, &current) {
+            if let Some(idx) = self.idx_of_ws(cur.workspace) {
+                self.workspaces[idx].set_ring_suppressed(source, true);
+                self.workspaces[idx].set_ring_suppressed(target, true);
+            }
+
+            let ws = self.active_workspace_ref();
+            let scale = ws.scale().fractional_scale();
+            let view_size = ws.view_size();
+            self.focus_ring_morph.update_render_elements(
+                view_size,
+                scale,
+                cur.urgent,
+                spin_speed,
+                &self.clock,
+            );
+        }
+    }
+
     pub fn update_config(&mut self, base_options: Rc<Options>) {
         let options =
             Rc::new(Options::clone(&base_options).with_merged_layout(self.layout_config.as_ref()));
@@ -1206,6 +1370,8 @@ impl<W: LayoutElement> Monitor<W> {
 
         self.insert_hint_element
             .update_config(options.layout.insert_hint);
+        self.focus_ring_morph
+            .update_config(options.layout.focus_ring);
 
         self.base_options = base_options;
         self.options = options;
@@ -1228,6 +1394,7 @@ impl<W: LayoutElement> Monitor<W> {
         }
 
         self.insert_hint_element.update_shaders();
+        self.focus_ring_morph.update_shaders();
     }
 
     pub fn update_output_size(&mut self) {
@@ -1694,6 +1861,10 @@ impl<W: LayoutElement> Monitor<W> {
             .insert_hint_render_loc
             .filter(|_| !self.options.layout.insert_hint.off);
 
+        let morph_render = self.focus_ring_morph_ids.is_some();
+        let morph_ws_id = morph_render.then(|| self.active_workspace_ref().id());
+        let morph_behind = self.options.layout.focus_ring.morph_behind_windows;
+
         let scale_relocate = move |geo: Rectangle<f64, Logical>, elem| {
             let elem = RescaleRenderElement::from_element(elem, Point::from((0, 0)), zoom);
             RelocateRenderElement::from_element(
@@ -1763,6 +1934,12 @@ impl<W: LayoutElement> Monitor<W> {
 
                 match pass {
                     0 => {
+                        // When requested, the morph ring travels behind window content: draw it
+                        // at the very bottom of this workspace's stack.
+                        if morph_behind && morph_ws_id == Some(ws.id()) {
+                            self.focus_ring_morph.render(ctx.renderer, push!());
+                        }
+
                         ws.render_floating(
                             ctx.r(),
                             xray_pos,
@@ -1788,6 +1965,11 @@ impl<W: LayoutElement> Monitor<W> {
                                     push!(),
                                 );
                             }
+                        }
+
+                        // The insert-hint slot: over window content by default.
+                        if !morph_behind && morph_ws_id == Some(ws.id()) {
+                            self.focus_ring_morph.render(ctx.renderer, push!());
                         }
                     }
                     2 => {
