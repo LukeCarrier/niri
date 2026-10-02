@@ -62,6 +62,27 @@ animations {
     recent-windows-close {
         spring damping-ratio=1.0 stiffness=800 epsilon=0.001
     }
+
+    // Focus ring color crossfade on focus changes.
+    // Disabled by default; set a duration to enable.
+    // focus-ring-fade {
+    //     duration-ms 500
+    //     curve "ease-out-cubic"
+    // }
+
+    // Border color crossfade on focus changes.
+    // Disabled by default; set a duration to enable.
+    // border-fade {
+    //     duration-ms 500
+    //     curve "ease-out-cubic"
+    // }
+
+    // Focus ring morph between windows on the same workspace.
+    // Disabled by default; set a duration to enable.
+    // focus-ring-morph {
+    //     duration-ms 250
+    //     curve "ease-out-cubic"
+    // }
 }
 ```
 
@@ -436,6 +457,64 @@ The close fade-out animation of the recent windows switcher.
 animations {
     recent-windows-close {
         spring damping-ratio=1.0 stiffness=800 epsilon=0.001
+    }
+}
+```
+
+#### `focus-ring-fade`
+
+<sup>Since: next release</sup>
+
+Crossfade of focus ring colors between inactive and active when focus changes.
+
+This animation also drives how quickly the focus ring fades out from one window and in around
+another when focus jumps between them, for example across workspaces.
+
+Disabled by default; set a duration to enable.
+
+```kdl
+animations {
+    focus-ring-fade {
+        duration-ms 500
+        curve "ease-out-cubic"
+    }
+}
+```
+
+#### `border-fade`
+
+<sup>Since: next release</sup>
+
+Crossfade of border colors between inactive and active when focus changes.
+
+Disabled by default; set a duration to enable.
+
+```kdl
+animations {
+    border-fade {
+        duration-ms 500
+        curve "ease-out-cubic"
+    }
+}
+```
+
+#### `focus-ring-morph`
+
+<sup>Since: next release</sup>
+
+When focus moves to another window on the same workspace, the focus ring slides from the old
+window to the new one instead of fading out and in.
+
+If the target is on another workspace, or the window is closing or going fullscreen, the ring
+falls back to the `focus-ring-fade` animation.
+
+Disabled by default; set a duration to enable.
+
+```kdl
+animations {
+    focus-ring-morph {
+        duration-ms 250
+        curve "ease-out-cubic"
     }
 }
 ```

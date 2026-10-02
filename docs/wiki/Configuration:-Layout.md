@@ -290,6 +290,9 @@ layout {
 
         // active-gradient from="#ffbb66" to="#ffc880" angle=45 relative-to="workspace-view"
         // inactive-gradient from="#505050" to="#808080" angle=45 relative-to="workspace-view" in="srgb-linear"
+
+        // Rotate the gradient slowly, in degrees per second.
+        // gradient-spin-speed 45
     }
 }
 ```
@@ -375,6 +378,40 @@ For example, `active-gradient from="#f00f" to="#0f05" angle=45 in="oklch longer 
 layout {
     border {
         active-gradient from="#f00f" to="#0f05" angle=45 in="oklch longer hue"
+    }
+}
+```
+
+#### Gradient spin
+
+<sup>Since: next release</sup>
+
+`gradient-spin-speed` rotates the gradient slowly, in degrees per second.
+Defaults to `0`, which keeps gradients static.
+The gradient rotates while the focus ring / border is showing active colors.
+
+```kdl
+layout {
+    border {
+        active-gradient from="#ffbb66" to="#ffc880" angle=45 relative-to="workspace-view"
+        gradient-spin-speed 45
+    }
+}
+```
+
+#### Focus ring morph
+
+<sup>Since: next release</sup>
+
+With the [`focus-ring-morph` animation](./Configuration:-Animations.md#focus-ring-morph) enabled, the focus ring slides from the old window to the new one when focus moves between windows on the same workspace.
+
+While sliding, the ring is drawn over window content.
+Set `morph-behind-windows` in `focus-ring` to draw it behind windows instead.
+
+```kdl
+layout {
+    focus-ring {
+        morph-behind-windows
     }
 }
 ```
